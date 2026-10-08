@@ -1,3 +1,12 @@
+## [Unreleased]
+
+### Fixed
+
+- **`Repository::Redis#write` now replaces an existing key.** In 1.0 a second
+  write of the same key kept the old value on read, because the stored JSON
+  held the key twice. This applies with and without a `state_key`, and with
+  encryption.
+
 ## [1.0.0] - 2026-08-20
 
 First stable release. The API is now frozen — subsequent breaking changes will
