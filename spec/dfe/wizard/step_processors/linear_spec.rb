@@ -294,6 +294,19 @@ RSpec.describe DfE::Wizard::StepsProcessor::Linear do
     end
   end
 
+  describe '#sub_wizards and #unit_for' do
+    let(:processor) { DfE::Wizard::StepsProcessor::Linear.new(HmrcSelfAssessmentWizard.new) }
+
+    it 'raises NotImplementedError for sub_wizards' do
+      expect { processor.sub_wizards }.to raise_error(NotImplementedError, 'sub-wizards need StepsProcessor::Graph')
+    end
+
+    it 'raises NotImplementedError for unit_for' do
+      expect { processor.unit_for(:personal_details) }
+        .to raise_error(NotImplementedError, 'sub-wizards need StepsProcessor::Graph')
+    end
+  end
+
   describe '#find_step' do
     let(:wizard) { HmrcSelfAssessmentWizard.new }
     let(:processor) do

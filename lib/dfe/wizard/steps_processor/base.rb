@@ -246,6 +246,27 @@ module DfE
           raise NotImplementedError, 'full_path needs StepsProcessor::Graph'
         end
 
+        # Sub-wizards declared in this processor.
+        #
+        # Only StepsProcessor::Graph implements this.
+        #
+        # @return [Hash{Symbol => Object}]
+        # @raise [NotImplementedError] For every processor except Graph
+        def sub_wizards
+          raise NotImplementedError, 'sub-wizards need StepsProcessor::Graph'
+        end
+
+        # The unit that holds a step.
+        #
+        # Only StepsProcessor::Graph implements this.
+        #
+        # @param _step_id [Symbol]
+        # @return [Object, nil]
+        # @raise [NotImplementedError] For every processor except Graph
+        def unit_for(_step_id)
+          raise NotImplementedError, 'sub-wizards need StepsProcessor::Graph'
+        end
+
         # Find and return the step class for a given step ID.
         #
         # Used by the wizard framework to:

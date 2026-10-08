@@ -63,6 +63,7 @@ module DfE
             raise ArgumentError, 'Graph must have a root node set. Call g.root(:some_step)'
           end
 
+          graph.registry.wire_sub_wizard_exits
           graph
         end
 
@@ -186,6 +187,30 @@ module DfE
         #   graph.full_path  # => [:name, :nationality, :review]
         def full_path
           @resolver.full_path
+        end
+
+        # Sub-wizards declared in this graph.
+        #
+        # @return [Hash{Symbol => Registry::Unit}] by sub-wizard id
+        # @api public
+        def sub_wizards
+          @registry.sub_wizards
+        end
+
+        # The unit that holds a step.
+        #
+        # A step in a sub-wizard belongs to that sub-wizard. Any other node is
+        # its own single-step unit, whose id is the step id.
+        #
+        # @param step_id [Symbol]
+        # @return [Registry::Unit, nil] nil when step_id is not a node
+        # @api public
+        def unit_for(step_id)
+          sub_wizard = @registry.sub_wizards.each_value.find { |unit| unit.step_ids.include?(step_id) }
+          return sub_wizard if sub_wizard
+          return unless @registry.nodes.key?(step_id)
+
+          Registry::Unit.new(id: step_id, step_ids: [step_id].freeze, exit_to: nil, uses: [].freeze, source: nil)
         end
 
         # Find step class by node ID.
