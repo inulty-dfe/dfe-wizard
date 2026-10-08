@@ -608,10 +608,11 @@ module DfE
         def unflatten_state(flat_hash)
           steps = {}
           metadata = {}
+          owners = attribute_owners
 
           flat_hash.each do |key, value|
             # Find which step owns this attribute
-            step_id = find_step_for_attribute(key)
+            step_id = owners[key.to_sym]
 
             if step_id
               steps[step_id] ||= {}
@@ -679,13 +680,28 @@ module DfE
         #
         # @api private
         def find_step_for_attribute(attribute_name)
-          result = steps_processor.step_definitions.find do |_, step_class|
+          result = cached_steps_processor.step_definitions.find do |_, step_class|
             next unless step_class.respond_to?(:attribute_names)
 
             step_class.attribute_names.map(&:to_sym).include?(attribute_name.to_sym)
           end
 
           result[0] if result
+        end
+
+        # Map each attribute name to the first step that declares it
+        #
+        # Same result as calling find_step_for_attribute for each attribute,
+        # built in one pass over the step definitions.
+        #
+        # @return [Hash{Symbol => Symbol}] attribute name => step ID
+        # @api private
+        def attribute_owners
+          cached_steps_processor.step_definitions.each_with_object({}) do |(step_id, step_class), owners|
+            next unless step_class.respond_to?(:attribute_names)
+
+            step_class.attribute_names.each { |name| owners[name.to_sym] ||= step_id }
+          end
         end
       end
     end
