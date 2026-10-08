@@ -20,6 +20,9 @@
   answers on a 14-step wizard went from 303 draws to 1. The public
   `steps_processor` is unchanged.
 - `state_store=` is now an explicit writer that clears the cached graph.
+- **The wizard sets `state_store.wizard`** in `new` and in `state_store=`,
+  so state store methods can read context (for example the provider)
+  through the wizard. In 1.0 the attribute existed but was never set.
 - A test that stubs a Symbol predicate or a Symbol callback after the wizard
   is built no longer sees the stub, because the graph bound the method when
   it was drawn. Stub before building the wizard, or use a lambda predicate.
