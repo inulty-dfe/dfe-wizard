@@ -25,6 +25,12 @@
   own, with a real state store or a stub store built from `uses`. The
   existing matchers work on `harness.wizard`. A step that calls an app
   wizard method raises `NoMethodError` there.
+- **`wizard.changeset`** keeps gem state beside the answers, under one
+  reserved top-level key, `_dfe_wizard`, written through the state store.
+  `changeset.answers` and `changeset.answer_changes_since(snapshot)` compare
+  answers after a JSON round trip, so values read back from any repository
+  compare equal. A `Repository::Model` (or subclass), or a state store
+  built without a repository, cannot hold one.
 - **`wizard.full_path`** returns every step from the root to the end of the
   graph over the current answers, without stopping at the current step. It
   stops before a Redirect node, an id that is not a node, or a repeated step.
@@ -45,6 +51,10 @@
 - A test that stubs a Symbol predicate or a Symbol callback after the wizard
   is built no longer sees the stub, because the graph bound the method when
   it was drawn. Stub before building the wizard, or use a lambda predicate.
+- `raw_data`, `data` and the metadata readers never return `_dfe_wizard`.
+- `StateStore.new` without `repository:` still uses a new InMemory
+  repository, and `default_repository?` reports it. Passing
+  `repository: nil` now gives that fallback instead of a nil repository.
 
 ### Fixed
 

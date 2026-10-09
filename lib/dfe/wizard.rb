@@ -84,6 +84,10 @@ module DfE
       # Step and path validation
       # @api public
       autoload :Validation, 'dfe/wizard/behaviours/validation'
+
+      # Change journeys from check answers
+      # @api public
+      autoload :Journeys, 'dfe/wizard/behaviours/journeys'
     end
     # @!endgroup
 
@@ -116,6 +120,7 @@ module DfE
     # @api public
     autoload :CheckAnswersPresenter, 'dfe/wizard/check_answers_presenter'
     autoload :SubWizard, 'dfe/wizard/sub_wizard'
+    autoload :Changeset, 'dfe/wizard/changeset'
 
     # @!group Auto generate Documentation for any wizard
     module Documentation
@@ -248,6 +253,7 @@ module DfE
     include Behaviours::StepManagement
     include Behaviours::StateManagement
     include Behaviours::CheckYourAnswers
+    include Behaviours::Journeys
 
     # Initializes a new wizard instance
     #
