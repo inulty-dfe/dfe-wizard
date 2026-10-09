@@ -4,11 +4,13 @@ module DfE
     # `graph.check_answers`.
     #
     # A journey starts on the GET that carries `return_to_review=<step_id>`
-    # (#start_redirect). It shows the step's unit, then each later unit on
-    # the path whose `depends_on` names an answer that changed since the
-    # start, then returns to the check answers node.
+    # (#start_redirect), or, for an edit of a saved record, in #start_edit.
+    # It shows the step's unit, then each later unit on the path whose
+    # `depends_on` names an answer that changed since the start, then
+    # returns to the caller: the check answers node on a draft, the caller
+    # URL in an edit.
     #
-    # State changes only in #start_redirect and #after_save.
+    # State changes only in #start_redirect, #start_edit and #after_save.
     # #next_step and #previous_step are the gem's before_next_step and
     # before_previous_step callbacks: they read state and never write.
     #
@@ -20,6 +22,9 @@ module DfE
     # @api private
     class Journey
       START_PARAM = :return_to_review
+
+      # Back target meaning "the caller", which is a URL in an edit
+      CALLER = :_dfe_wizard_caller
 
       # @param wizard [DfE::Wizard]
       def initialize(wizard)
@@ -45,6 +50,74 @@ module DfE
 
         changeset.journey = { unit: unit.id, shown: [], snapshot: changeset.answers }
         @wizard.resolve_step_path(first_step)
+      end
+
+      # Start the journey of an edit of a saved record
+      #
+      # Seeds the changeset from the wizard's record and mapper, stores the
+      # record identity and the caller URL, then starts a journey for the
+      # unit.
+      #
+      # @param unit_id [Symbol] a unit id, or a step id in the unit
+      # @param caller_url [String]
+      # @return [Symbol] the unit's first step on the path
+      # @raise [ArgumentError] for an unknown unit
+      # @raise [NotCallable] when the unit has no step on the path
+      def start_edit(unit_id:, caller_url:)
+        unit = graph.unit(unit_id)
+        raise ArgumentError, "#{unit_id.inspect} is not a unit or a step" unless unit
+
+        record = @wizard.record
+        changeset.seed!(@wizard.mapper.to_answers(record), updated_at: record.updated_at)
+        changeset.identify!(record:, caller_url:)
+
+        first_step = unit_steps_on(@wizard.full_path, unit).first
+        unless first_step
+          changeset.discard!
+          raise NotCallable, "unit #{unit.id.inspect} has no step on the path for this record"
+        end
+
+        changeset.journey = { unit: unit.id, shown: [], snapshot: changeset.answers }
+        first_step
+      end
+
+      # Whether the save in this request ended the journey
+      #
+      # @return [Boolean]
+      def finished?
+        @finished
+      end
+
+      # Whether Back from the current step leaves the journey for its caller
+      #
+      # @return [Boolean]
+      def back_to_caller?
+        back_target == CALLER
+      end
+
+      # Whether the journey shows a step: the step is on the path, and its
+      # unit is the current unit or a shown unit. The check answers node is
+      # never shown.
+      #
+      # @param step_id [Symbol]
+      # @return [Boolean]
+      def shows?(step_id)
+        state = changeset.journey
+        unit = graph.unit_for(step_id)
+        return false unless state && unit
+
+        units = [state[:unit].to_sym] + shown_units(state)
+        units.include?(unit.id) && @wizard.full_path.include?(step_id)
+      end
+
+      # The first step on the path of the current unit
+      #
+      # @return [Symbol, nil] nil when there is no journey
+      def current_unit_first_step
+        state = changeset.journey
+        return unless state
+
+        unit_steps_on(@wizard.full_path, graph.unit(state[:unit].to_sym)).first
       end
 
       # Called by save_current_step after the step's operations succeed
@@ -111,6 +184,14 @@ module DfE
       #
       # @return [Symbol, nil] nil to use 1.0 navigation
       def previous_step
+        target = back_target
+        target == CALLER ? caller_step : target
+      end
+
+      private
+
+      # The Back target: a step id, CALLER, or nil outside the journey
+      def back_target
         state = changeset.journey
         unit = current_unit
         return unless state && unit
@@ -130,10 +211,8 @@ module DfE
           return last_step if last_step
         end
 
-        caller_step
+        CALLER
       end
-
-      private
 
       def start_unit
         step_id = start_param
@@ -158,8 +237,11 @@ module DfE
         @wizard.current_step_name
       end
 
+      # The check answers node on a draft. Nil in an edit: its caller is a
+      # URL, which the wizard returns from next_step_path and
+      # previous_step_path.
       def caller_step
-        graph.check_answers_step
+        graph.check_answers_step unless @wizard.editing?
       end
 
       def shown_units(state)

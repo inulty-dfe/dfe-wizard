@@ -1,20 +1,85 @@
 module DfE
   module Wizard
     module Behaviours
-      # Change journeys from check answers.
+      # Change journeys from check answers, and edits of saved records.
       #
       # Turned on by `graph.check_answers` in a Graph wizard. A wizard that
       # does not declare it behaves as in 1.0.
       #
       # @api public
       module Journeys
+        # The saved record of an edit, given to `new` as `record:`
+        #
+        # @return [Object, nil] nil on a draft
+        attr_reader :record
+
         # The wizard's changeset
         #
-        # Memoised per wizard instance. Building it reads and writes nothing.
+        # Memoised per wizard instance. Building it reads and writes nothing
+        # for a wizard that neither edits nor declares graph.check_answers.
+        # Otherwise the first call checks that the changeset matches the
+        # request: it reads the store once and never walks the graph.
         #
         # @return [DfE::Wizard::Changeset]
+        # @raise [ChangesetExpired] built with `record:` and the changeset
+        #   holds no edit
+        # @raise [ChangesetMismatch] the changeset is an edit of another
+        #   record, or an edit and the request has no `record:`
         def changeset
           @changeset ||= Changeset.new(self)
+          unless @changeset_checked
+            @changeset.check_mode!(record) if editing? || journeys?
+            @changeset_checked = true
+          end
+          @changeset
+        end
+
+        # Whether this request edits a saved record (built with `record:`)
+        #
+        # @return [Boolean]
+        def editing?
+          !record.nil?
+        end
+
+        # The mapper that seeds an edit from the saved record
+        #
+        # Override it to edit saved records. It must respond to
+        # `to_answers(record)`.
+        #
+        # @return [#to_answers, nil] nil by default
+        def mapper
+          nil
+        end
+
+        # Start an edit of the saved record
+        #
+        # Call it at the edit entry point, on a wizard built with `record:`
+        # and a new state_key. It seeds the changeset with
+        # `mapper.to_answers(record)`, keeps the record's `updated_at`, its
+        # identity and the caller URL, and starts a change journey for the
+        # unit. Redirect to the step it returns.
+        #
+        # @param unit [Symbol] a unit id (a sub-wizard id or a step id)
+        # @param caller [String] the URL to return to when the edit ends
+        # @return [Symbol] the first step to show
+        # @raise [ArgumentError] without `record:`, `graph.check_answers`, a
+        #   mapper or an `on_commit` operation; for an unknown unit; or for a
+        #   repository that cannot hold a changeset
+        # @raise [NotCallable] when the unit has no step on the path
+        #
+        # @example
+        #   wizard = CourseWizard.new(state_store:, record: course)
+        #   step = wizard.start_edit(unit: :funding_type, caller: course_path)
+        #   redirect_to wizard.resolve_step_path(step)
+        def start_edit(unit:, caller:)
+          raise ArgumentError, 'start_edit needs a wizard built with record:' unless editing?
+          raise ArgumentError, 'edits need graph.check_answers' unless journeys?
+          raise ArgumentError, 'edits need a mapper' if mapper.nil?
+          raise ArgumentError, 'edits need builder.on_commit' if steps_operator.commit_operations.empty?
+
+          @changeset ||= Changeset.new(self)
+          @changeset_checked = true
+          journey.start_edit(unit_id: unit.to_sym, caller_url: caller)
         end
 
         # The current answers for the steps on the full path
@@ -42,6 +107,48 @@ module DfE
           end
         end
 
+        # Whether a step may be shown or saved in this request
+        #
+        # Always true on a draft. In an edit, true when the step is on the
+        # path and in the journey's current unit or a unit it has shown.
+        #
+        # @param step_id [Symbol]
+        # @return [Boolean]
+        #
+        # @example Guard a GET in an edit
+        #   redirect_to wizard.resolve_step_path(wizard.redirect_step) unless wizard.step_accessible?(step)
+        def step_accessible?(step_id)
+          return true unless editing?
+
+          journey.shows?(step_id.to_sym)
+        end
+
+        # Where to send a request for a step that is not accessible
+        #
+        # @return [Symbol, nil] the first step on the path of the journey's
+        #   current unit, or nil when there is no journey
+        def redirect_step
+          journey.current_unit_first_step
+        end
+
+        # The previous step; nil when Back leaves an edit for its caller
+        #
+        # @return [Symbol, nil]
+        def previous_step
+          return if edit_back_to_caller?
+
+          super
+        end
+
+        # The previous step's path; the caller URL when Back leaves an edit
+        #
+        # @return [String, nil]
+        def previous_step_path(fallback: nil, **options)
+          return changeset.caller_url if edit_back_to_caller?
+
+          super
+        end
+
         # Start a change journey on a GET that carries the start param
         #
         # Call it at the top of the step's GET action. When the request
@@ -59,7 +166,7 @@ module DfE
         #     redirect_to(redirect) if redirect
         #   end
         def journey_start_redirect
-          return unless journeys?
+          return if !journeys? || editing?
 
           journey.start_redirect
         end
@@ -83,6 +190,12 @@ module DfE
         # @api private
         def raw_step_params
           @current_step_params
+        end
+
+        private
+
+        def edit_back_to_caller?
+          editing? && journeys? && !journey.finished? && journey.back_to_caller?
         end
       end
     end

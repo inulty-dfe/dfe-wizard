@@ -210,6 +210,7 @@ module DfE
         # **Fails fast**: stops and returns false on first failed operation.
         #
         # @return [Boolean] true if all operations succeeded, false if any failed
+        # @raise [StepNotAccessible] in an edit, for a step the edit does not show
         #
         # @example With default operations
         #   wizard.save_current_step  # Runs Validate, then Persist
@@ -226,6 +227,10 @@ module DfE
         # @see Operations
         # @api public
         def save_current_step
+          if editing? && !step_accessible?(current_step_name)
+            raise StepNotAccessible, "step #{current_step_name.inspect} is not shown in this edit"
+          end
+
           operations = steps_operator.operations_for(current_step_name)
 
           operations.each do |operation_class|
