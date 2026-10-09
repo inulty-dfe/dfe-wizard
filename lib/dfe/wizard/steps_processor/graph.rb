@@ -3,6 +3,7 @@ require_relative 'graph/registry'
 require_relative 'graph/navigation_resolver'
 require_relative 'graph/sub_wizard_dsl'
 require_relative 'graph/sub_wizard_checks'
+require_relative 'graph/journey_checks'
 
 module DfE
   module Wizard
@@ -68,6 +69,7 @@ module DfE
 
           graph.registry.wire_sub_wizard_exits
           SubWizardChecks.new(graph.registry).run!
+          JourneyChecks.new(graph.registry).run!
           graph
         end
 
@@ -204,17 +206,46 @@ module DfE
         # The unit that holds a step.
         #
         # A step in a sub-wizard belongs to that sub-wizard. Any other node is
-        # its own single-step unit, whose id is the step id.
+        # its own single-step unit, whose id is the step id. The check answers
+        # node belongs to no unit.
         #
         # @param step_id [Symbol]
-        # @return [Registry::Unit, nil] nil when step_id is not a node
+        # @return [Registry::Unit, nil] nil when step_id is not a node, or is the check answers node
         # @api public
         def unit_for(step_id)
+          return if step_id == @registry.check_answers_node
+
           sub_wizard = @registry.sub_wizards.each_value.find { |unit| unit.step_ids.include?(step_id) }
           return sub_wizard if sub_wizard
-          return unless @registry.nodes.key?(step_id)
 
-          Registry::Unit.new(id: step_id, step_ids: [step_id].freeze, exit_to: nil, uses: [].freeze, source: nil)
+          node = @registry.nodes[step_id]
+          return unless node
+
+          Registry::Unit.new(
+            id: step_id,
+            step_ids: [step_id].freeze,
+            exit_to: nil,
+            uses: [].freeze,
+            source: nil,
+            depends_on: node.depends_on,
+          )
+        end
+
+        # The unit with this id: a sub-wizard, or a single-step unit.
+        #
+        # @param unit_id [Symbol]
+        # @return [Registry::Unit, nil]
+        # @api public
+        def unit(unit_id)
+          @registry.sub_wizards[unit_id] || unit_for(unit_id)
+        end
+
+        # The check answers node, which turns on change journeys.
+        #
+        # @return [Symbol, nil] nil when graph.check_answers is not declared
+        # @api public
+        def check_answers_step
+          @registry.check_answers_node
         end
 
         # Find step class by node ID.
