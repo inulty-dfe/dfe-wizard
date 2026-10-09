@@ -65,7 +65,9 @@
   an edit.
 - **Changeset edit fields:** `changeset.seed!`, `seed`, `seed_updated_at`,
   `edit?`, `diff` and `diff?` (answers on the path that differ from the
-  seed), `stale?(record)` and `discard!` (only this changeset's data).
+  seed, compared in JSON form and returned as the store holds them, so a
+  Date or a Struct answer reaches the commit operation unchanged),
+  `stale?(record)` and `discard!` (only this changeset's data).
 - **`wizard.answers_on_path`** returns the answers of the steps on
   `full_path`.
 - **`Repository::Redis#delete_state`** removes only this `state_key`'s

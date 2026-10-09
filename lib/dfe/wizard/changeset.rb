@@ -107,13 +107,15 @@ module DfE
 
       # Answers on the path that differ from the seed
       #
-      # Answers for steps that left the path are not included. Both sides
-      # are normalised.
+      # Answers for steps that left the path are not included. Each answer
+      # is compared in its normalised (JSON) form, as the seed is stored, and
+      # returned as the store holds it, so a value that is not plain JSON (a
+      # Date, a Struct) reaches the commit operation unchanged.
       #
       # @return [Hash{Symbol => Object}] in attribute_names order
       def diff
         seeded = seed
-        normalise(@wizard.answers_on_path).reject { |name, value| seeded[name] == value }
+        @wizard.answers_on_path.reject { |name, value| seeded[name] == normalise(value) }
       end
 
       # @return [Boolean]
