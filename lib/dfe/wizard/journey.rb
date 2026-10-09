@@ -49,19 +49,41 @@ module DfE
 
       # Called by save_current_step after the step's operations succeed
       #
-      # A save on a step outside the journey changes nothing; navigation is
-      # as in 1.0. A save on the unit's last step on the path ends the
-      # journey.
+      # - A save on a step outside the journey changes nothing; navigation
+      #   is as in 1.0.
+      # - A save in a unit already shown (the user went Back into it) makes
+      #   that unit current again, and forgets it and every later shown unit.
+      # - A save on the unit's last step on the path ends the unit: the
+      #   next unit is the first later unit on the path, not yet shown, whose
+      #   depends_on names a changed answer. With none, the journey ends.
       #
       # @return [void]
       def after_save
         state = changeset.journey
         unit = current_unit
-        return unless state && unit && unit.id == state[:unit].to_sym
-        return if later_step_in_unit(@wizard.full_path, unit)
+        return unless state && unit
 
-        changeset.journey = nil
-        @finished = true
+        shown = shown_units(state)
+        if shown.include?(unit.id)
+          shown = shown.take(shown.index(unit.id))
+        elsif unit.id != state[:unit].to_sym
+          return
+        end
+
+        path = @wizard.full_path
+        if later_step_in_unit(path, unit)
+          changeset.journey = state.merge(unit: unit.id, shown:)
+          return
+        end
+
+        shown += [unit.id]
+        next_unit = queued_units(path, unit, shown, changeset.answer_changes_since(state[:snapshot])).first
+        if next_unit
+          changeset.journey = state.merge(unit: next_unit.id, shown:)
+        else
+          changeset.journey = nil
+          @finished = true
+        end
       end
 
       # The gem's before_next_step callback
@@ -154,6 +176,13 @@ module DfE
         steps = unit_steps_on(path, unit)
         index = steps.index(current_step_name)
         index ? steps[index + 1] : nil
+      end
+
+      def queued_units(path, unit, shown, changed)
+        units = path.filter_map { |step_id| graph.unit_for(step_id) }.uniq(&:id)
+        units.drop_while { |candidate| candidate.id != unit.id }.drop(1).select do |candidate|
+          !shown.include?(candidate.id) && candidate.depends_on.intersect?(changed)
+        end
       end
 
       def changeset
