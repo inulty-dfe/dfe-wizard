@@ -209,6 +209,11 @@ module DfE
         #
         # **Fails fast**: stops and returns false on first failed operation.
         #
+        # In a change journey, a save that ends a unit moves the journey on
+        # (see Behaviours::Journeys). In an edit of a saved record, the save
+        # that ends the journey also runs the commit; it still returns true,
+        # and `commit_result` holds the outcome.
+        #
         # @return [Boolean] true if all operations succeeded, false if any failed
         # @raise [StepNotAccessible] in an edit, for a step the edit does not show
         #
@@ -239,7 +244,10 @@ module DfE
             return false unless result && result[:success]
           end
 
-          journey.after_save if journeys?
+          if journeys?
+            journey.after_save
+            commit_edit if editing? && journey.finished?
+          end
           true
         end
 
