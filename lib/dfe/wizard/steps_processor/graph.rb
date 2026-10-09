@@ -70,7 +70,21 @@ module DfE
           graph.registry.wire_sub_wizard_exits
           SubWizardChecks.new(graph.registry).run!
           JourneyChecks.new(graph.registry).run!
+          register_journey_callbacks(graph.registry, wizard) if graph.registry.check_answers_node
           graph
+        end
+
+        # Journey navigation runs before every app callback, so an app
+        # callback cannot override it during a journey.
+        #
+        # @api private
+        def self.register_journey_callbacks(registry, wizard)
+          unless wizard.respond_to?(:journey)
+            raise InvalidGraph, 'graph.check_answers needs a wizard that includes DfE::Wizard'
+          end
+
+          registry.prepend_before_previous_callback(-> { wizard.journey.previous_step })
+          registry.prepend_before_next_callback(-> { wizard.journey.next_step })
         end
 
         attr_reader :registry, :resolver

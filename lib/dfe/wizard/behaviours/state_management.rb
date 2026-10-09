@@ -234,6 +234,7 @@ module DfE
             return false unless result && result[:success]
           end
 
+          journey.after_save if journeys?
           true
         end
 

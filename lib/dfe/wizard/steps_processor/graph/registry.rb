@@ -104,6 +104,20 @@ module DfE
             @previous_step_before_callbacks << callback
           end
 
+          # Register a callback that runs before every other before_next callback.
+          #
+          # @api private
+          def prepend_before_next_callback(callback)
+            @next_step_before_callbacks.unshift(callback)
+          end
+
+          # Register a callback that runs before every other before_previous callback.
+          #
+          # @api private
+          def prepend_before_previous_callback(callback)
+            @previous_step_before_callbacks.unshift(callback)
+          end
+
           def before_next_callbacks
             @next_step_before_callbacks
           end
