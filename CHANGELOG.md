@@ -52,6 +52,26 @@
   answers when none is left. Back crosses into the unit shown before.
   Saving a unit the user went Back into makes it current again, so a later
   unit is asked again if its dependency still changed.
+- **Edits of saved records.** Build the wizard with `record:` and call
+  `wizard.start_edit(unit:, caller:)` at the entry point: it seeds the
+  changeset with `wizard.mapper.to_answers(record)` (`DfE::Wizard::Mapper`)
+  and starts a change journey for the unit. Back from the first step and
+  the end of the journey go to the caller URL. The save that ends the
+  journey runs the operations registered with `builder.on_commit(use:)`,
+  unless nothing changed or the record is stale, then discards the
+  changeset; `wizard.commit_result` holds the status (`:committed`,
+  `:unchanged`, `:stale`, `:failed`) and the errors.
+  `wizard.step_accessible?` and `wizard.redirect_step` guard the steps of
+  an edit.
+- **Changeset edit fields:** `changeset.seed!`, `seed`, `seed_updated_at`,
+  `edit?`, `diff` and `diff?` (answers on the path that differ from the
+  seed), `stale?(record)` and `discard!` (only this changeset's data).
+- **`wizard.answers_on_path`** returns the answers of the steps on
+  `full_path`.
+- **`Repository::Redis#delete_state`** removes only this `state_key`'s
+  state.
+- **Edit errors:** `DfE::Wizard::NotCallable`, `ChangesetMismatch`,
+  `ChangesetExpired` and `StepNotAccessible`.
 - **`wizard.full_path`** returns every step from the root to the end of the
   graph over the current answers, without stopping at the current step. It
   stops before a Redirect node, an id that is not a node, or a repeated step.
@@ -83,6 +103,9 @@
   write of the same key kept the old value on read, because the stored JSON
   held the key twice. This applies with and without a `state_key`, and with
   encryption.
+- **`Repository::Session#delete_data` (and so `clear`) with a `state_key`**
+  now removes the state when it is the only one under the key. In 1.0 it
+  left it in place.
 
 ## [1.0.0] - 2026-08-20
 
