@@ -8,7 +8,8 @@ module DfE
     # It shows the step's unit, then each later unit on the path whose
     # `depends_on` names an answer that changed since the start, then
     # returns to the caller: the check answers node on a draft, the caller
-    # URL in an edit.
+    # URL in an edit. An edit with a change goes to the edit review node
+    # first, when the graph declares one and its skip_when does not hold.
     #
     # State changes only in #start_redirect, #start_edit and #after_save.
     # #next_step and #previous_step are the gem's before_next_step and
@@ -17,7 +18,8 @@ module DfE
     # Stored state (in the changeset, under :journey):
     # - unit: the unit being shown;
     # - shown: units already shown in this journey, in order;
-    # - snapshot: the answers at the start.
+    # - snapshot: the answers at the start;
+    # - review: true while an edit waits on the edit review node.
     #
     # @api private
     class Journey
@@ -69,7 +71,7 @@ module DfE
 
         record = @wizard.record
         changeset.seed!(@wizard.mapper.to_answers(record), updated_at: record.updated_at)
-        changeset.identify!(record:, caller_url:)
+        changeset.identify!(record:, caller_url:, unit: unit.id)
 
         first_step = unit_steps_on(@wizard.full_path, unit).first
         unless first_step
@@ -97,12 +99,15 @@ module DfE
 
       # Whether the journey shows a step: the step is on the path, and its
       # unit is the current unit or a shown unit. The check answers node is
-      # never shown.
+      # never shown. The edit review node is shown only while the edit waits
+      # on it.
       #
       # @param step_id [Symbol]
       # @return [Boolean]
       def shows?(step_id)
         state = changeset.journey
+        return reviewing?(state) if step_id == review_step
+
         unit = graph.unit_for(step_id)
         return false unless state && unit
 
@@ -110,12 +115,14 @@ module DfE
         units.include?(unit.id) && @wizard.full_path.include?(step_id)
       end
 
-      # The first step on the path of the current unit
+      # The first step on the path of the current unit, or the edit review
+      # node while the edit waits on it
       #
       # @return [Symbol, nil] nil when there is no journey
       def current_unit_first_step
         state = changeset.journey
         return unless state
+        return review_step if reviewing?(state)
 
         unit_steps_on(@wizard.full_path, graph.unit(state[:unit].to_sym)).first
       end
@@ -128,14 +135,25 @@ module DfE
       #   that unit current again, and forgets it and every later shown unit.
       # - A save on the unit's last step on the path ends the unit: the
       #   next unit is the first later unit on the path, not yet shown, whose
-      #   depends_on names a changed answer. With none, the journey ends.
+      #   depends_on names a changed answer. With none, the journey ends, or
+      #   an edit with a change goes to the edit review node.
+      # - A save on the edit review node, while the edit waits on it, ends
+      #   the journey.
       #
       # @return [void]
       def after_save
         state = changeset.journey
-        unit = current_unit
-        return unless state && unit
+        return unless state
 
+        if current_step_name == review_step
+          @finished = true if reviewing?(state)
+          return
+        end
+
+        unit = current_unit
+        return unless unit
+
+        state = state.except(:review)
         shown = shown_units(state)
         if shown.include?(unit.id)
           shown = shown.take(shown.index(unit.id))
@@ -153,6 +171,9 @@ module DfE
         next_unit = queued_units(path, unit, shown, changeset.answer_changes_since(state[:snapshot])).first
         if next_unit
           changeset.journey = state.merge(unit: next_unit.id, shown:)
+        elsif review_due?
+          changeset.journey = state.merge(unit: unit.id, shown:, review: true)
+          @reviewing = true
         else
           # An edit keeps the state until the commit discards the changeset,
           # so an operation that raises leaves the edit where it was.
@@ -166,6 +187,7 @@ module DfE
       # @return [Symbol, nil] nil to use 1.0 navigation
       def next_step
         return caller_step if @finished
+        return review_step if @reviewing
 
         state = changeset.journey
         unit = current_unit
@@ -183,6 +205,7 @@ module DfE
       # Inside a unit, Back goes to the previous step of the unit on the
       # path. On its first step, Back goes to the last step of the unit
       # shown before it, and on the first unit to the check answers node.
+      # On the edit review node, Back goes to the last step shown.
       #
       # @return [Symbol, nil] nil to use 1.0 navigation
       def previous_step
@@ -195,6 +218,8 @@ module DfE
       # The Back target: a step id, CALLER, or nil outside the journey
       def back_target
         state = changeset.journey
+        return review_back_target(state) if state && current_step_name == review_step
+
         unit = current_unit
         return unless state && unit
 
@@ -214,6 +239,33 @@ module DfE
         end
 
         CALLER
+      end
+
+      # The last step on the path of the last shown unit
+      def review_back_target(state)
+        return unless reviewing?(state)
+
+        path = @wizard.full_path
+        shown_units(state).reverse_each do |unit_id|
+          last_step = unit_steps_on(path, graph.unit(unit_id)).last
+          return last_step if last_step
+        end
+
+        CALLER
+      end
+
+      def review_step
+        graph.edit_review_step
+      end
+
+      def reviewing?(state)
+        state.present? && state[:review] == true
+      end
+
+      # An edit with a change ends on the edit review node, unless its
+      # skip_when holds
+      def review_due?
+        @wizard.editing? && review_step.present? && !graph.skipped?(review_step) && changeset.diff?
       end
 
       def start_unit
