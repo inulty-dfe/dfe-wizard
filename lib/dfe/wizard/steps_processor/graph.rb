@@ -221,13 +221,14 @@ module DfE
         #
         # A step in a sub-wizard belongs to that sub-wizard. Any other node is
         # its own single-step unit, whose id is the step id. The check answers
-        # node belongs to no unit.
+        # node and the edit review node belong to no unit.
         #
         # @param step_id [Symbol]
-        # @return [Registry::Unit, nil] nil when step_id is not a node, or is the check answers node
+        # @return [Registry::Unit, nil] nil when step_id is not a node, or is
+        #   the check answers or edit review node
         # @api public
         def unit_for(step_id)
-          return if step_id == @registry.check_answers_node
+          return if step_id == @registry.check_answers_node || step_id == @registry.edit_review_node
 
           sub_wizard = @registry.sub_wizards.each_value.find { |unit| unit.step_ids.include?(step_id) }
           return sub_wizard if sub_wizard
@@ -260,6 +261,24 @@ module DfE
         # @api public
         def check_answers_step
           @registry.check_answers_node
+        end
+
+        # The edit review node, which an edit of a saved record ends on
+        # before it commits.
+        #
+        # @return [Symbol, nil] nil when graph.edit_review is not declared
+        # @api public
+        def edit_review_step
+          @registry.edit_review_node
+        end
+
+        # Whether a node's skip_when holds for the current answers
+        #
+        # @param step_id [Symbol]
+        # @return [Boolean] false for a node with no skip_when
+        # @api public
+        def skipped?(step_id)
+          @resolver.skipped?(step_id)
         end
 
         # Find step class by node ID.

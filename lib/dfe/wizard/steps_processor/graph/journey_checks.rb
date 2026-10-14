@@ -8,6 +8,9 @@ module DfE
         # - no step attribute is named `_dfe_wizard` (every graph);
         # - the check answers node is a node, in no sub-wizard, with no
         #   depends_on (rule 3);
+        # - the edit review node is a node, in no sub-wizard, with no
+        #   depends_on, and not the check answers node, in a graph that
+        #   declares graph.check_answers;
         # - every depends_on name is a step attribute, and a node in a
         #   sub-wizard declares none of its own.
         #
@@ -23,6 +26,7 @@ module DfE
           def run!
             check_reserved_attribute!
             check_check_answers_node!
+            check_edit_review_node!
             check_depends_on!
           end
 
@@ -52,6 +56,27 @@ module DfE
             return if node.depends_on.empty?
 
             raise InvalidGraph, "the check answers node :#{node_id} cannot have depends_on"
+          end
+
+          def check_edit_review_node!
+            node_id = @registry.edit_review_node
+            return unless node_id
+
+            node = @registry.nodes[node_id]
+            raise InvalidGraph, "graph.edit_review :#{node_id} is not a node" unless node
+            raise InvalidGraph, 'graph.edit_review needs graph.check_answers' unless @registry.check_answers_node
+            if node_id == @registry.check_answers_node
+              raise InvalidGraph, ":#{node_id} cannot be both the check answers node and the edit review node"
+            end
+
+            owner = @registry.sub_wizards.each_value.find { |unit| unit.step_ids.include?(node_id) }
+            if owner
+              raise InvalidGraph,
+                    "the edit review node :#{node_id} is in sub-wizard :#{owner.id}; it belongs to no unit"
+            end
+            return if node.depends_on.empty?
+
+            raise InvalidGraph, "the edit review node :#{node_id} cannot have depends_on"
           end
 
           def check_depends_on!
