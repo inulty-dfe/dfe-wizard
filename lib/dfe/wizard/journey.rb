@@ -32,6 +32,7 @@ module DfE
       def initialize(wizard)
         @wizard = wizard
         @finished = false
+        @reviewing = false
       end
 
       # Start a journey when the request carries the start param
