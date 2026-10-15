@@ -285,6 +285,15 @@ module DfE
           raise NotImplementedError, 'sub-wizards need StepsProcessor::Graph'
         end
 
+        # The units that a change to each answer queues.
+        #
+        # Only StepsProcessor::Graph implements this.
+        #
+        # @raise [NotImplementedError] For every processor except Graph
+        def change_journeys
+          raise NotImplementedError, 'change journeys need StepsProcessor::Graph'
+        end
+
         # Find and return the step class for a given step ID.
         #
         # Used by the wizard framework to:
