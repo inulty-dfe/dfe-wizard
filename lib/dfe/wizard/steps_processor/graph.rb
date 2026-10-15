@@ -260,8 +260,10 @@ module DfE
         #
         # Each key is an answer that some unit names in depends_on. Its value
         # lists those units in the order the graph declares their first step.
-        # This is a static view: at run time a journey queues only the units
-        # later on the path than the changed unit, in path order.
+        # A unit that names one of its own answers is left out: a change never
+        # queues the unit it was made in. This is a static view: at run time a
+        # journey queues only the units later on the path than the changed
+        # unit, in path order.
         #
         # @return [Hash{Symbol => Array<Symbol>}] unit ids by answer name
         # @api public
@@ -270,9 +272,14 @@ module DfE
         #   graph.change_journeys  # => { funding: [:visa] }
         def change_journeys
           units = @registry.nodes.each_key.filter_map { |step_id| unit_for(step_id) }.uniq(&:id)
+          owners = answer_owners
 
           units.each_with_object({}) do |unit, journeys|
-            unit.depends_on.each { |name| (journeys[name] ||= []) << unit.id }
+            unit.depends_on.each do |name|
+              next if unit.step_ids.include?(owners[name])
+
+              (journeys[name] ||= []) << unit.id
+            end
           end
         end
 
@@ -452,6 +459,18 @@ module DfE
             multiple_conditional_edges: @registry.multiple_conditional_edges.size,
             custom_branching_edges: @registry.custom_branching_edges.size,
           }
+        end
+
+        # The first node that declares each answer, as unflatten_state finds it
+        #
+        # @return [Hash{Symbol => Symbol}] step id by answer name
+        # @api private
+        def answer_owners
+          @registry.nodes.each_with_object({}) do |(step_id, node), owners|
+            next unless node.klass.respond_to?(:attribute_names)
+
+            node.klass.attribute_names.each { |name| owners[name.to_sym] ||= step_id }
+          end
         end
       end
     end
